@@ -5,6 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.IndexColumn;
+
+import java.io.Serializable;
 
 @Data
 @Builder
@@ -12,10 +15,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Entity
 @Table(name = "payment")
-public class Payment {
+public class Payment implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    @IndexColumn(name = "idx_idempotency_id")
     private String idempotencyId;
     private Double amount;
     @Enumerated(EnumType.STRING)

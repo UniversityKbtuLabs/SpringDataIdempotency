@@ -6,33 +6,43 @@ import com.spring.data_idempotency_project.dto.PaymentCreateDTO;
 import com.spring.data_idempotency_project.models.Payment;
 import com.spring.data_idempotency_project.repositories.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.PartitionOffset;
 import org.springframework.kafka.annotation.TopicPartition;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public String createPayment(PaymentCreateDTO paymentCreateDTO) throws JsonProcessingException {
-        Optional<Payment> payment = paymentRepository.findByIdempotencyId(paymentCreateDTO.getIdempotencyId());
-        if (payment.isPresent()) {
-            return "Идемпотентность успешно";
-        } else {
-            ObjectMapper objectMapper = new ObjectMapper();
-            kafkaTemplate.send(
-                    "my_topic",
-                    0,
-                    paymentCreateDTO.getIdempotencyId(),
-                    objectMapper.writeValueAsBytes(paymentCreateDTO)
-            );
-            return "Отправлено на кафка";
+        Payment payment = null;
+        try {
+            payment = paymentRepository.findByIdempotencyId(paymentCreateDTO.getIdempotencyId());
+        } catch (Exception e) {
+
+        } finally {
+            if (payment != null) {
+                return "Идемпотентность успешно";
+            } else {
+                ObjectMapper objectMapper = new ObjectMapper();
+                kafkaTemplate.send(
+                        "my_topic",
+                        0,
+                        String.valueOf(paymentCreateDTO.getIdempotencyId()),
+                        objectMapper.writeValueAsBytes(paymentCreateDTO)
+                );
+                return "Отправлено на кафка";
+            }
         }
     }
 
@@ -47,6 +57,25 @@ public class PaymentService {
                 .currency(paymentCreateDTO.getCurrency())
                 .description(paymentCreateDTO.getDescription())
                 .build();
-        paymentRepository.save(payment);
+        try {
+            paymentRepository.save(payment);
+            savePendingPayments();
+            redisTemplate.delete("payments_need_save");
+        } catch (Exception e) {
+            redisTemplate.opsForList().rightPush("payments_need_save", payment);
+        }
+    }
+
+    private void savePendingPayments() {
+        List<Object> pendingPayments = redisTemplate.opsForList().range("payments_need_save", 0, -1);
+        System.out.println(pendingPayments);
+        for (Object payment : pendingPayments) {
+            Payment newPayment = (Payment) payment;
+            try {
+                paymentRepository.save(newPayment); // записываем платеж в базу
+            } catch (Exception e) {
+
+            }
+        }
     }
 }

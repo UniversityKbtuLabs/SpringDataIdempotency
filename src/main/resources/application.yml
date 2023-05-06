@@ -4,10 +4,14 @@ spring:
     username: idempotency
     password: idempotency
     driver-class-name: org.postgresql.Driver
+    hikari:
+      validation-timeout: 260
+      minimum-idle: 0
+      connection-timeout: 2000
   jpa:
     hibernate:
       ddl-auto: create
-    show-sql: true
+    #    show-sql: true
     database: postgresql
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
