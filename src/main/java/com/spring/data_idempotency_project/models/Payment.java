@@ -20,6 +20,7 @@ public class Payment implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @IndexColumn(name = "idx_idempotency_id")
+    @Column(unique = true)
     private String idempotencyId;
     private Double amount;
     @Enumerated(EnumType.STRING)

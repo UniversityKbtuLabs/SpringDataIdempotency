@@ -5,14 +5,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spring.data_idempotency_project.dto.PaymentCreateDTO;
 import com.spring.data_idempotency_project.models.Payment;
 import com.spring.data_idempotency_project.repositories.PaymentRepository;
+import jakarta.persistence.EntityExistsException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.PartitionOffset;
 import org.springframework.kafka.annotation.TopicPartition;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -49,7 +53,7 @@ public class PaymentService {
     @KafkaListener(topicPartitions = @TopicPartition(
             topic = "my_topic", partitionOffsets = @PartitionOffset(partition = "0", initialOffset = "0")
     ))
-    public void listenPaymentCreate(String message) throws JsonProcessingException {
+    public void listenPaymentCreate(@Payload byte[] message, Acknowledgment acknowledgment) throws IOException {
         PaymentCreateDTO paymentCreateDTO = new ObjectMapper().readValue(message, PaymentCreateDTO.class);
         Payment payment = Payment.builder()
                 .idempotencyId(paymentCreateDTO.getIdempotencyId())
@@ -61,6 +65,10 @@ public class PaymentService {
             paymentRepository.save(payment);
             savePendingPayments();
             redisTemplate.delete("payments_need_save");
+            acknowledgment.acknowledge(); // Подтверждение обработки сообщения
+        }catch (EntityExistsException e) {
+            // Обработка PSQLException
+            // Ничего не делать, если именно такой тип исключения
         } catch (Exception e) {
             redisTemplate.opsForList().rightPush("payments_need_save", payment);
         }
